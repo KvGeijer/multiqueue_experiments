@@ -12,5 +12,5 @@
 	url = https://github.com/marvinwilliams/mq-based-schedulers.git
 [submodule "multiqueue"]
 	path = multiqueue
-	url = https://github.com/marvinwilliams/multiqueue
+	url = https://github.com/KvGeijer/multiqueue
 	branch = devel
