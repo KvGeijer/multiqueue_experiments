@@ -5,6 +5,10 @@
 #include "util/thread_coordination.hpp"
 #include "wrapper/util/selector.hpp"
 
+#ifdef LOG_TIMESTAMPS
+#include "util/timestamp_log.hpp"
+#endif
+
 #include <cxxopts.hpp>
 
 #include <fcntl.h>
@@ -23,7 +27,11 @@
 #include <vector>
 
 using pq_type = PQ<true, unsigned long, unsigned long>;
+#ifdef LOG_TIMESTAMPS
+using handle_type = timestamp_log::Handle<pq_type::handle_type>;
+#else
 using handle_type = pq_type::handle_type;
+#endif
 using node_type = pq_type::value_type;
 
 struct Settings {
@@ -40,6 +48,9 @@ struct Settings {
             ("source", "Source node: 0-based index or max-degree", cxxopts::value<std::string>(source), "NODE");
         // clang-format on
         pq_settings.register_cmd_options(cmd);
+#ifdef LOG_TIMESTAMPS
+        timestamp_log::register_cmd_options(cmd);
+#endif
         cmd.parse_positional({"graph"});
     }
 
@@ -122,7 +133,7 @@ struct ThreadResult {
 [[gnu::noinline]] ThreadResult benchmark_thread(thread_coordination::Context& thread_context, pq_type& pq,
                                                 SharedData& data) {
     ThreadResult result{};
-    auto handle = pq.get_handle();
+    handle_type handle = pq.get_handle();
     if (thread_context.id() == 0) {
         data.distances[data.source].value = 0;
         handle.push({0, data.source});
@@ -135,6 +146,9 @@ struct ThreadResult {
 }
 
 void run_benchmark(Settings const& settings) {
+#ifdef LOG_TIMESTAMPS
+    timestamp_log::check_output();
+#endif
     std::clog << "Reading graph...\n";
     SharedData shared_data{{}, {}, 0, parallel_search::Termination{settings.base_settings.num_threads}};
     try {
@@ -170,6 +184,9 @@ void run_benchmark(Settings const& settings) {
         thread_interval[t_id] = r.interval;
     });
     auto memory_end = memory_stats::Snapshot::take();
+#ifdef LOG_TIMESTAMPS
+    timestamp_log::write_history(timestamp_log::output_file());
+#endif
 
     std::clog << "Done\n";
     Counter summed{};

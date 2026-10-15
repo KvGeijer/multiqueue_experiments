@@ -6,6 +6,9 @@
 #ifdef LOG_OPERATIONS
 #include "tools/quality.hpp"
 #endif
+#ifdef LOG_TIMESTAMPS
+#include "util/timestamp_log.hpp"
+#endif
 
 #include <cxxopts.hpp>
 
@@ -26,7 +29,11 @@ using value_type = unsigned long;
 using clock_type = benchmark::clock_type;
 
 using pq_type = PQ<true, key_type, value_type>;
+#ifdef LOG_TIMESTAMPS
+using handle_type = timestamp_log::Handle<pq_type::handle_type>;
+#else
 using handle_type = pq_type::handle_type;
+#endif
 
 struct Settings {
     benchmark::BaseSettings base_settings{};
@@ -52,6 +59,9 @@ struct Settings {
         base_settings.register_cmd_options(cmd);
         pq_settings.register_cmd_options(cmd);
         papi.register_cmd_options(cmd);
+#ifdef LOG_TIMESTAMPS
+        timestamp_log::register_cmd_options(cmd);
+#endif
         cmd.add_options()
             // clang-format off
             ("p,prefill", "Prefill per thread", cxxopts::value<long long>(prefill_per_thread), "NUMBER")
@@ -465,6 +475,9 @@ void benchmark_thread(Context context) {
 }
 
 void run_benchmark(Settings const& settings) {
+#ifdef LOG_TIMESTAMPS
+    timestamp_log::check_output();
+#endif
     SharedData shared_data;
     auto num_threads = settings.base_settings.num_threads;
     shared_data.updates.resize(static_cast<std::size_t>(settings.iterations_per_thread * num_threads));
@@ -475,6 +488,9 @@ void run_benchmark(Settings const& settings) {
     thread_coordination::dispatch(settings.base_settings.affinity, settings.base_settings.num_threads, [&](auto ctx) {
         benchmark_thread(Context(std::move(ctx), pq.get_handle(), shared_data, settings));
     });
+#ifdef LOG_TIMESTAMPS
+    timestamp_log::write_history(timestamp_log::output_file());
+#endif
 
 #ifdef LOG_OPERATIONS
     std::clog << "Replaying operations...\n";

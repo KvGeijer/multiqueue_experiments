@@ -41,9 +41,15 @@ if(EXP_TUNING_TARGETS)
   add_custom_target(tuning_log_all)
 endif()
 
+# Benchmarks that can also be built with timestamped operation logging
+set(TIMESTAMP_BENCHMARKS monotonic dijkstra)
+
 foreach(benchmark monotonic push_pop dijkstra knapsack)
   add_custom_target(${benchmark}_all)
   add_custom_target(${benchmark}_log_all)
+  if(${benchmark} IN_LIST TIMESTAMP_BENCHMARKS)
+    add_custom_target(${benchmark}_ts_all)
+  endif()
   if(EXP_TUNING_TARGETS)
     add_custom_target(${benchmark}_tuning_all)
     add_custom_target(${benchmark}_log_tuning_all)
@@ -59,6 +65,13 @@ function(add_benchmark benchmark target)
   target_link_libraries(${benchmark}_log_${target} PRIVATE ${target}
                                                            ${benchmark}_base)
   target_compile_definitions(${benchmark}_log_${target} PRIVATE LOG_OPERATIONS)
+
+  if(${benchmark} IN_LIST TIMESTAMP_BENCHMARKS)
+    add_executable(${benchmark}_ts_${target})
+    target_link_libraries(${benchmark}_ts_${target} PRIVATE ${target}
+                                                            ${benchmark}_base)
+    target_compile_definitions(${benchmark}_ts_${target} PRIVATE LOG_TIMESTAMPS)
+  endif()
 endfunction()
 
 foreach(target ${COMPETITORS})
@@ -66,6 +79,9 @@ foreach(target ${COMPETITORS})
     add_benchmark(${benchmark} ${target})
     add_dependencies(${benchmark}_all ${benchmark}_${target})
     add_dependencies(${benchmark}_log_all ${benchmark}_log_${target})
+    if(${benchmark} IN_LIST TIMESTAMP_BENCHMARKS)
+      add_dependencies(${benchmark}_ts_all ${benchmark}_ts_${target})
+    endif()
   endforeach()
 endforeach()
 
