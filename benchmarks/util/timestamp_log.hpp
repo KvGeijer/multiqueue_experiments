@@ -16,9 +16,9 @@
 // by the second component. For this to identify elements, the pair must be unique:
 // the node id in dijkstra and the element id in monotonic.
 //
-// The timestamps are the same as in semantic-relaxation-2D-elastic
-// (include/linearizability_logging.h): RDTSCP followed by LFENCE (Grimes et al.,
-// 2023). They are TSC cycles, not nanoseconds, and x86-64 only.
+// The queue itself is given the packed value as its key, so that it orders by exactly
+// what the monitor orders by, and equal keys no longer tie. The handle unpacks the
+// key again on pop, so the benchmark still sees the key it pushed.
 
 #include <cxxopts.hpp>
 
@@ -157,23 +157,35 @@ class Handle {
         return (key << 32) | value;
     }
 
+    // The element as stored in the queue: the packed value is its key
+    static value_type to_inner(std::uint64_t packed, value_type const& v) {
+        return value_type{static_cast<typename value_type::first_type>(packed), v.second};
+    }
+
+    // The element as the benchmark pushed it: the key is the upper half of the packed key
+    static value_type from_inner(value_type const& v) {
+        return value_type{static_cast<typename value_type::first_type>(static_cast<std::uint64_t>(v.first) >> 32),
+                          v.second};
+    }
+
    public:
     Handle(Inner&& handle) : handle_{std::move(handle)}, log_{Registry::instance().create()} {
     }
 
     decltype(auto) push(value_type const& value) {
         auto packed = pack(value);
+        auto const inner_value = to_inner(packed, value);
         compiler_barrier();
         auto inv = get_next_timestamp();
         compiler_barrier();
-        if constexpr (std::is_void_v<decltype(handle_.push(value))>) {
-            handle_.push(value);
+        if constexpr (std::is_void_v<decltype(handle_.push(inner_value))>) {
+            handle_.push(inner_value);
             compiler_barrier();
             auto res = get_next_timestamp();
             compiler_barrier();
             log_->push_back({inv, res, packed, Op::push});
         } else {
-            auto success = handle_.push(value);
+            auto success = handle_.push(inner_value);
             compiler_barrier();
             auto res = get_next_timestamp();
             compiler_barrier();
@@ -193,12 +205,12 @@ class Handle {
         compiler_barrier();
         auto res = get_next_timestamp();
         compiler_barrier();
-        if (result) {
-            log_->push_back({inv, res, pack(*result), Op::pop});
-        } else {
+        if (!result) {
             log_->push_back({inv, res, 0, Op::empty});
+            return std::nullopt;
         }
-        return result;
+        log_->push_back({inv, res, static_cast<std::uint64_t>(result->first), Op::pop});
+        return from_inner(*result);
     }
 };
 
